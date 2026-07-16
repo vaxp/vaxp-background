@@ -27,6 +27,8 @@
 
 #include <gst/gst.h>
 
+#include "audio_analyzer.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -82,6 +84,9 @@ int main(int argc, char* argv[]) {
 
     /* Load initial wallpaper from config */
     load_saved_wallpaper();
+
+    /* Start audio analysis thread for reactive effects */
+    audio_analyzer_start();
 
     /* ── Main loop ────────────────────────────────────────────────────────── */
 
@@ -153,7 +158,10 @@ int main(int argc, char* argv[]) {
     }
 
     /* ── Cleanup ── */
-    printf("[Main] Shutting down\n");
+    printf("\n[Main] Shutting down\n");
+
+    audio_analyzer_stop();
+
     if (video_wallpaper_is_active()) video_wallpaper_stop();
     wallpaper_destroy();
     backend->destroy(backend);

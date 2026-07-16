@@ -14,6 +14,7 @@
 #include "desktop_config.h"
 #include "video_wallpaper.h"
 #include "layer_manager.h"
+#include "audio_analyzer.h"
 
 /* Forward declaration of the canvas type & API from vaxp_canvas_opengl.c */
 /* We only use the minimal subset needed here. */
@@ -116,9 +117,17 @@ static const char* FS_FULLSCREEN =
     "uniform int       uAnimType;\n"
     "uniform int       uIsOutgoing;\n"
     "uniform float     uAspect;\n"
+    "uniform float     uAudioLevel;\n"
+    "uniform float     uTime;\n"
     "void main() {\n"
     "    vec2 uv = vUV;\n"
     "    float alpha_mult = 1.0;\n"
+    "\n"
+    "    if (uAudioLevel > 0.02) {\n"
+    "        float wave = sin(uv.y * 30.0 + uTime * 5.0) * cos(uv.x * 20.0 - uTime * 3.0);\n"
+    "        uv += wave * uAudioLevel * 0.03;\n"
+    "    }\n"
+    "\n"
     "    if (uProgress > 0.0 && uProgress < 1.0) {\n"
     "        if (uAnimType == 0) {\n"
     "            if (uIsOutgoing == 1) {\n"
@@ -189,6 +198,13 @@ static const char* FS_FULLSCREEN =
     "    } else {\n"
     "        c = texture(uTexY, uv);\n"
     "    }\n"
+    "\n"
+    "    if (uAudioLevel > 0.02) {\n"
+    "        float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));\n"
+    "        vec3 sat = mix(vec3(lum), c.rgb, 1.0 + uAudioLevel * 1.5);\n"
+    "        c.rgb = sat * (1.0 + uAudioLevel * 0.5);\n"
+    "    }\n"
+    "\n"
     "    FragColor = vec4(c.rgb, c.a * uAlpha * alpha_mult);\n"
     "}\n";
 
@@ -271,7 +287,7 @@ static void init_fullscreen_shader(void) {
 
 /* ── Draw a texture as a full-screen quad with alpha ────────────────────── */
 
-static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float alpha, float progress, int anim_type, int is_outgoing) {
+static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float alpha, float progress, int anim_type, int is_outgoing, float audio_lvl, float time_sec) {
     if (!g_prog_quad || !tex_y) return;
     p_glUseProgram(g_prog_quad);
     
@@ -291,6 +307,8 @@ static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float
     p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uAnimType"), anim_type);
     p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uIsOutgoing"), is_outgoing);
     p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uAspect"), (float)screen_w / (float)(screen_h > 0 ? screen_h : 1));
+    p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uAudioLevel"), audio_lvl);
+    p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uTime"), time_sec);
     
     p_glBindVertexArray(g_vao_quad);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -515,6 +533,8 @@ void wallpaper_render(float elapsed_sec) {
     glViewport(0, 0, screen_w, screen_h);
 
     WallpaperLayer layer = layer_manager_current();
+    float alvl = audio_analyzer_get_level();
+    float tsec = (float)now_sec();
 
     if (layer == LAYER_VIDEO) {
         /* ── Video layer ── */
@@ -530,7 +550,7 @@ void wallpaper_render(float elapsed_sec) {
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        draw_fullscreen_tex(vtex_y, vtex_uv, true, 1.0f, 0.0f, 0, 0);
+        draw_fullscreen_tex(vtex_y, vtex_uv, true, 1.0f, 0.0f, 0, 0, alvl, tsec);
         return;
     }
 
@@ -551,12 +571,12 @@ void wallpaper_render(float elapsed_sec) {
     }
 
     /* Draw current wallpaper (incoming) */
-    draw_fullscreen_tex(g_tex_current, 0, false, 1.0f, (g_in_transition && g_tex_prev) ? progress : 0.0f, g_anim_type, 0);
+    draw_fullscreen_tex(g_tex_current, 0, false, 1.0f, (g_in_transition && g_tex_prev) ? progress : 0.0f, g_anim_type, 0, alvl, tsec);
 
     /* Draw outgoing (previous) wallpaper on top */
     if (g_in_transition && g_tex_prev) {
         /* Alpha is handled in shader via alpha_mult for specific animations (e.g. crossfade)
          * but we can pass base alpha = 1.0 since the shader controls fade directly. */
-        draw_fullscreen_tex(g_tex_prev, 0, false, 1.0f, progress, g_anim_type, 1);
+        draw_fullscreen_tex(g_tex_prev, 0, false, 1.0f, progress, g_anim_type, 1, alvl, tsec);
     }
 }

@@ -24,6 +24,11 @@ gst_app_dep = dependency('gstreamer-app-1.0')
 gst_gl_dep  = dependency('gstreamer-gl-1.0')
 gst_vid_dep = dependency('gstreamer-video-1.0')
 
+# ── PulseAudio (for audio-reactive visuals) ──────────────────────────────────
+pulse_dep        = dependency('libpulse', required : true)
+pulse_simple_dep = dependency('libpulse-simple', required : true)
+
+
 # ── VA-API (for DMA-BUF surface export) ──────────────────────────────────────
 libva_dep   = dependency('libva', required : true)
 
@@ -64,7 +69,7 @@ deps = [
   x11_dep, xrandr_dep, gl_dep,
   wayland_client_dep, wayland_egl_dep, egl_dep,
   gst_dep, gst_app_dep, gst_gl_dep, gst_vid_dep,
-  libva_dep,
+  libva_dep, pulse_dep, pulse_simple_dep,
 ]
 
 # Include dirs: project include/ + builddir (for generated protocol headers)
@@ -79,6 +84,7 @@ bg_srcs = [
   'src/wallpaper.c',
   'src/video_wallpaper.c',
   'src/desktop_config.c',
+  'src/audio_analyzer.c',
   'vaxp_canvas_opengl.c',
   # Generated Wayland protocol glue
   wlr_layer_shell_code,
