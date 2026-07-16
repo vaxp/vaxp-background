@@ -127,7 +127,30 @@ static gboolean load_next_image(gpointer user_data) {
         if (!is_image_file(fname)) continue;
 
         char *full_path = g_strdup_printf("%s/%s", loader->dir_path, fname);
-        GdkPixbuf *thumb = gdk_pixbuf_new_from_file_at_scale(full_path, 180, 110, FALSE, NULL);
+        
+        char *cache_dir = g_build_filename(g_get_user_cache_dir(), "vaxp-thumbnails", NULL);
+        g_mkdir_with_parents(cache_dir, 0755);
+        g_free(cache_dir);
+        
+        char *hash = g_compute_checksum_for_string(G_CHECKSUM_MD5, full_path, -1);
+        char *thumb_name = g_strdup_printf("%s.png", hash);
+        char *thumb_path = get_vaxp_cache_path(thumb_name);
+        g_free(thumb_name);
+        g_free(hash);
+
+        GdkPixbuf *thumb = NULL;
+        
+        if (g_file_test(thumb_path, G_FILE_TEST_EXISTS)) {
+            thumb = gdk_pixbuf_new_from_file(thumb_path, NULL);
+        } else {
+            thumb = gdk_pixbuf_new_from_file_at_scale(full_path, 180, 110, FALSE, NULL);
+            if (thumb) {
+                gdk_pixbuf_save(thumb, thumb_path, "png", NULL, NULL);
+            }
+        }
+        
+        g_free(thumb_path);
+
         GtkWidget *img = thumb
             ? gtk_image_new_from_pixbuf(thumb)
             : gtk_image_new_from_icon_name("image-missing", GTK_ICON_SIZE_DIALOG);
@@ -333,7 +356,14 @@ int main(int argc, char *argv[]) {
         "  background-image: none; border: none; box-shadow: none; }"
         "label { color: white; }"
         "notebook tab { color: white; }"
-        "notebook tab:checked { color: #aaddff; font-weight: bold; }",
+        "notebook tab:checked { color: #aaddff; font-weight: bold; }"
+        "button, combobox {"
+        "  background-color: rgba(0,0,0,0.4); background-image: none;"
+        "  border: 1px solid rgba(255,255,255,0.2); box-shadow: none; color: white; }"
+        "button:hover, combobox:hover {"
+        "  background-color: rgba(255,255,255,0.15); }"
+        "popover, menu, menuitem {"
+        "  background-color: rgba(20,20,20,0.95); color: white; background-image: none; border: none; }",
         -1, NULL);
     gtk_style_context_add_provider_for_screen(screen, GTK_STYLE_PROVIDER(css),
                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
