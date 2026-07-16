@@ -112,22 +112,84 @@ static const char* FS_FULLSCREEN =
     "uniform sampler2D uTexUV;\n"
     "uniform float     uAlpha;\n"
     "uniform int       uIsNV12;\n"
+    "uniform float     uProgress;\n"
+    "uniform int       uAnimType;\n"
+    "uniform int       uIsOutgoing;\n"
+    "uniform float     uAspect;\n"
     "void main() {\n"
+    "    vec2 uv = vUV;\n"
+    "    float alpha_mult = 1.0;\n"
+    "    if (uProgress > 0.0 && uProgress < 1.0) {\n"
+    "        if (uAnimType == 0) {\n"
+    "            if (uIsOutgoing == 1) {\n"
+    "                if (uv.x < 0.5) uv.x += uProgress * 0.5;\n"
+    "                else uv.x -= uProgress * 0.5;\n"
+    "                if (uv.x > 0.5 && vUV.x < 0.5) discard;\n"
+    "                if (uv.x < 0.5 && vUV.x >= 0.5) discard;\n"
+    "            }\n"
+    "        } else if (uAnimType == 1) {\n"
+    "            if (uIsOutgoing == 1) {\n"
+    "                vec2 p = vUV - vec2(0.5);\n"
+    "                p.x *= uAspect;\n"
+    "                if (length(p) < uProgress * 1.5) discard;\n"
+    "            }\n"
+    "        } else if (uAnimType == 2) {\n"
+    "            if (uIsOutgoing == 1) alpha_mult = 1.0 - uProgress;\n"
+    "        } else if (uAnimType == 3) {\n"
+    "            if (uIsOutgoing == 1) { if (vUV.x < uProgress) discard; }\n"
+    "        } else if (uAnimType == 4) {\n"
+    "            if (uIsOutgoing == 1) {\n"
+    "                uv = (uv - 0.5) * (1.0 + uProgress * 2.0) + 0.5;\n"
+    "                alpha_mult = 1.0 - uProgress;\n"
+    "                if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;\n"
+    "            }\n"
+    "        } else if (uAnimType == 5) {\n"
+    "            if (uIsOutgoing == 1) {\n"
+    "                if (fract(vUV.y * 10.0) < uProgress) discard;\n"
+    "            }\n"
+    "        } else if (uAnimType == 6) {\n"
+    "            if (uIsOutgoing == 1) {\n"
+    "                uv.y += uProgress;\n"
+    "                if (uv.y > 1.0) discard;\n"
+    "            } else {\n"
+    "                uv.y -= (1.0 - uProgress);\n"
+    "                if (uv.y < 0.0) discard;\n"
+    "            }\n"
+    "        } else if (uAnimType == 7) {\n"
+    "            if (uIsOutgoing == 1) {\n"
+    "                vec2 cell = floor(vUV * vec2(20.0 * uAspect, 20.0));\n"
+    "                float r = fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);\n"
+    "                if (r < uProgress) discard;\n"
+    "            }\n"
+    "        } else if (uAnimType == 8) {\n"
+    "            if (uIsOutgoing == 1) { if (vUV.x + vUV.y < uProgress * 2.0) discard; }\n"
+    "        } else if (uAnimType == 9) {\n"
+    "            if (uIsOutgoing == 1) {\n"
+    "                float a = uProgress * 3.14159;\n"
+    "                float s = sin(a), c = cos(a);\n"
+    "                vec2 p = vUV - 0.5;\n"
+    "                p.x *= uAspect;\n"
+    "                uv.x = (p.x * c - p.y * s) / uAspect;\n"
+    "                uv.y = (p.x * s + p.y * c);\n"
+    "                uv = uv * (1.0 + uProgress * 2.0) + 0.5;\n"
+    "                alpha_mult = 1.0 - uProgress;\n"
+    "                if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;\n"
+    "            }\n"
+    "        }\n"
+    "    }\n"
+    "    vec4 c = vec4(0.0);\n"
     "    if (uIsNV12 == 1) {\n"
-    "        float y = texture(uTexY, vUV).r - (16.0 / 255.0);\n"
-    "        float u = texture(uTexUV, vUV).r - 0.5;\n"
-    "        float v = texture(uTexUV, vUV).g - 0.5;\n"
-    "        \n"
-    "        // BT.709 Limited Range to Full Range RGB\n"
+    "        float y = texture(uTexY, uv).r - (16.0 / 255.0);\n"
+    "        float u = texture(uTexUV, uv).r - 0.5;\n"
+    "        float v = texture(uTexUV, uv).g - 0.5;\n"
     "        float r = 1.16438 * y + 1.79274 * v;\n"
     "        float g = 1.16438 * y - 0.21325 * u - 0.53291 * v;\n"
     "        float b = 1.16438 * y + 2.11240 * u;\n"
-    "        \n"
-    "        FragColor = vec4(r, g, b, uAlpha);\n"
+    "        c = vec4(r, g, b, 1.0);\n"
     "    } else {\n"
-    "        vec4 c = texture(uTexY, vUV);\n"
-    "        FragColor = vec4(c.rgb, c.a * uAlpha);\n"
+    "        c = texture(uTexY, uv);\n"
     "    }\n"
+    "    FragColor = vec4(c.rgb, c.a * uAlpha * alpha_mult);\n"
     "}\n";
 
 /* GL 3.3 function pointers we need (loaded lazily from libGL via glXGetProcAddress) */
@@ -209,7 +271,7 @@ static void init_fullscreen_shader(void) {
 
 /* ── Draw a texture as a full-screen quad with alpha ────────────────────── */
 
-static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float alpha) {
+static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float alpha, float progress, int anim_type, int is_outgoing) {
     if (!g_prog_quad || !tex_y) return;
     p_glUseProgram(g_prog_quad);
     
@@ -225,6 +287,10 @@ static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float
     
     p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uIsNV12"), is_nv12 ? 1 : 0);
     p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uAlpha"), alpha);
+    p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uProgress"), progress);
+    p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uAnimType"), anim_type);
+    p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uIsOutgoing"), is_outgoing);
+    p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uAspect"), (float)screen_w / (float)(screen_h > 0 ? screen_h : 1));
     
     p_glBindVertexArray(g_vao_quad);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -464,7 +530,7 @@ void wallpaper_render(float elapsed_sec) {
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        draw_fullscreen_tex(vtex_y, vtex_uv, true, 1.0f);
+        draw_fullscreen_tex(vtex_y, vtex_uv, true, 1.0f, 0.0f, 0, 0);
         return;
     }
 
@@ -484,33 +550,13 @@ void wallpaper_render(float elapsed_sec) {
         }
     }
 
-    /* Draw current wallpaper */
-    draw_fullscreen_tex(g_tex_current, 0, false, 1.0f);
+    /* Draw current wallpaper (incoming) */
+    draw_fullscreen_tex(g_tex_current, 0, false, 1.0f, (g_in_transition && g_tex_prev) ? progress : 0.0f, g_anim_type, 0);
 
-    /* Draw outgoing (previous) wallpaper on top with decreasing alpha */
+    /* Draw outgoing (previous) wallpaper on top */
     if (g_in_transition && g_tex_prev) {
-        float prev_alpha = (float)(1.0 - progress);
-
-        switch (g_anim_type) {
-            case 2:  /* Crossfade */
-            default:
-                draw_fullscreen_tex(g_tex_prev, 0, false, prev_alpha);
-                break;
-
-            /* For more complex transitions (wipe, zoom, etc.) we'd need
-             * additional clip/scissor or transform logic.  For now they
-             * all fall back to a clean crossfade — easy to extend later. */
-            case 0:  /* Sliding Doors → crossfade fallback */
-            case 1:  /* Circle Reveal → crossfade fallback */
-            case 3:  /* Wipe Right    → crossfade fallback */
-            case 4:  /* Zoom Out      → crossfade fallback */
-            case 5:  /* Blinds        → crossfade fallback */
-            case 6:  /* Swipe Up      → crossfade fallback */
-            case 7:  /* Grid/Mosaic   → crossfade fallback */
-            case 8:  /* Diagonal Wipe → crossfade fallback */
-            case 9:  /* Spin & Fade   → crossfade fallback */
-                draw_fullscreen_tex(g_tex_prev, 0, false, prev_alpha);
-                break;
-        }
+        /* Alpha is handled in shader via alpha_mult for specific animations (e.g. crossfade)
+         * but we can pass base alpha = 1.0 since the shader controls fade directly. */
+        draw_fullscreen_tex(g_tex_prev, 0, false, 1.0f, progress, g_anim_type, 1);
     }
 }
