@@ -66,9 +66,10 @@ static double g_transition_start = 0.0;  /* wall-clock seconds */
 static bool   g_in_transition    = false;
 #define TRANSITION_DURATION 0.8           /* seconds */
 
-/* inotify */
+/* inotify: watch the parent DIRECTORY so atomic rename() doesn't kill the watch */
 static int    g_inotify_fd    = -1;
 static int    g_inotify_wd    = -1;
+static char   g_watch_filename[256] = {0}; /* basename of config file to filter */
 
 /* ── Time helper ────────────────────────────────────────────────────────────── */
 
@@ -360,28 +361,56 @@ void wallpaper_resize(int w, int h) {
     screen_h = h;
 }
 
-/* inotify monitoring */
+/* inotify monitoring — watch the DIRECTORY so atomic rename() doesn't break us */
 void init_wallpaper_monitor(void) {
-    char* path = get_vaxp_main_config_path();
+    char* file_path = get_vaxp_main_config_path();
+    if (!file_path) return;
+
+    /* Split into directory + basename */
+    char dir_path[4096];
+    snprintf(dir_path, sizeof(dir_path), "%s", file_path);
+    char* slash = strrchr(dir_path, '/');
+    if (slash) {
+        /* Save just the filename for filtering events */
+        snprintf(g_watch_filename, sizeof(g_watch_filename), "%s", slash + 1);
+        *slash = '\0'; /* dir_path is now the parent directory */
+    } else {
+        snprintf(g_watch_filename, sizeof(g_watch_filename), "%s", dir_path);
+        snprintf(dir_path, sizeof(dir_path), ".");
+    }
+
     g_inotify_fd = inotify_init1(IN_NONBLOCK);
     if (g_inotify_fd >= 0) {
-        g_inotify_wd = inotify_add_watch(g_inotify_fd, path,
-                                          IN_CLOSE_WRITE | IN_CREATE);
-        if (g_inotify_wd < 0) {
-            fprintf(stderr, "[Wallpaper] inotify_add_watch failed for %s\n", path);
-        }
+        /* Watch the directory: survives atomic rename() unlike file watches */
+        g_inotify_wd = inotify_add_watch(g_inotify_fd, dir_path,
+                                          IN_CLOSE_WRITE | IN_CREATE | IN_MOVED_TO);
+        if (g_inotify_wd < 0)
+            fprintf(stderr, "[Wallpaper] inotify_add_watch failed for dir %s\n", dir_path);
     }
-    free(path);
+    free(file_path);
 }
 
 int wallpaper_monitor_fd(void) { return g_inotify_fd; }
 
 bool wallpaper_monitor_fd_ready(void) {
     if (g_inotify_fd < 0) return false;
-    /* Drain inotify events */
-    char buf[sizeof(struct inotify_event) + 256];
+
+    /* Read inotify events — must use proper struct layout (variable-length name) */
+    char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
     bool got = false;
-    while (read(g_inotify_fd, buf, sizeof(buf)) > 0) got = true;
+    ssize_t len;
+    while ((len = read(g_inotify_fd, buf, sizeof(buf))) > 0) {
+        const char* p = buf;
+        while (p < buf + len) {
+            const struct inotify_event* ev = (const struct inotify_event*)p;
+            /* Only trigger a reload if the event is for our config file */
+            if (ev->len > 0 && strcmp(ev->name, g_watch_filename) == 0)
+                got = true;
+            else if (ev->len == 0)
+                got = true; /* no name = direct file watch (shouldn't happen, but safe) */
+            p += sizeof(struct inotify_event) + ev->len;
+        }
+    }
     return got;
 }
 
@@ -399,8 +428,10 @@ void load_saved_wallpaper(void) {
         layer_manager_show_video();
         video_wallpaper_load(path);
     } else {
-        /* Static image */
+        /* Static image — stop any running video first */
         if (video_wallpaper_is_active()) video_wallpaper_stop();
+        /* Clear cached path so load_wallpaper always reloads after a video */
+        if (!g_tex_current) { free(g_current_path); g_current_path = NULL; }
         layer_manager_show_image();
         load_wallpaper(path);
     }
