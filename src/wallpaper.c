@@ -105,12 +105,24 @@ static const char* VS_FULLSCREEN =
 
 static const char* FS_FULLSCREEN =
     "#version 330 core\n"
-    "in vec2 vUV;\n"
+    "in  vec2 vUV;\n"
     "out vec4 FragColor;\n"
-    "uniform sampler2D uTex;\n"
-    "uniform float uAlpha;\n"
+    "uniform sampler2D uTexY;\n"
+    "uniform sampler2D uTexUV;\n"
+    "uniform float     uAlpha;\n"
+    "uniform int       uIsNV12;\n"
     "void main() {\n"
-    "    FragColor = texture(uTex, vUV) * vec4(1.0, 1.0, 1.0, uAlpha);\n"
+    "    if (uIsNV12 == 1) {\n"
+    "        float y = texture(uTexY, vUV).r;\n"
+    "        vec2 uv = texture(uTexUV, vUV).rg - vec2(0.5, 0.5);\n"
+    "        float r = y + 1.402 * uv.y;\n"
+    "        float g = y - 0.344136 * uv.x - 0.714136 * uv.y;\n"
+    "        float b = y + 1.772 * uv.x;\n"
+    "        FragColor = vec4(r, g, b, uAlpha);\n"
+    "    } else {\n"
+    "        vec4 c = texture(uTexY, vUV);\n"
+    "        FragColor = vec4(c.rgb, c.a * uAlpha);\n"
+    "    }\n"
     "}\n";
 
 /* GL 3.3 function pointers we need (loaded lazily from libGL via glXGetProcAddress) */
@@ -192,15 +204,28 @@ static void init_fullscreen_shader(void) {
 
 /* ── Draw a texture as a full-screen quad with alpha ────────────────────── */
 
-static void draw_fullscreen_tex(GLuint tex, float alpha) {
-    if (!g_prog_quad || !tex) return;
+static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float alpha) {
+    if (!g_prog_quad || !tex_y) return;
     p_glUseProgram(g_prog_quad);
+    
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uTex"),   0);
+    glBindTexture(GL_TEXTURE_2D, tex_y);
+    p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uTexY"), 0);
+    
+    if (is_nv12 && tex_uv) {
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, tex_uv);
+        p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uTexUV"), 1);
+    }
+    
+    p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uIsNV12"), is_nv12 ? 1 : 0);
     p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uAlpha"), alpha);
+    
     p_glBindVertexArray(g_vao_quad);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    
+    /* Reset active texture just in case */
+    glActiveTexture(GL_TEXTURE0);
 }
 
 /* ── Load an image file into a GL texture via GStreamer ──────────────────── */
@@ -392,19 +417,19 @@ void wallpaper_render(float elapsed_sec) {
 
     if (layer == LAYER_VIDEO) {
         /* ── Video layer ── */
-        GLuint vtex = 0; int vw = 0, vh = 0;
-        bool new_frame = video_wallpaper_update_texture(&vtex, &vw, &vh);
+        GLuint vtex_y = 0, vtex_uv = 0; int vw = 0, vh = 0;
+        bool new_frame = video_wallpaper_update_texture(&vtex_y, &vtex_uv, &vw, &vh);
 
         /* If no new frame but we have a cached texture, still present it */
         if (!new_frame && g_tex_prev == 0) {
             /* Use the video module's last known texture without pulling */
-            video_wallpaper_get_texture(&vtex, &vw, &vh);
+            video_wallpaper_get_texture(&vtex_y, &vtex_uv, &vw, &vh);
         }
-        if (!vtex) return;  /* nothing to draw yet */
+        if (!vtex_y) return;  /* nothing to draw yet */
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        draw_fullscreen_tex(vtex, 1.0f);
+        draw_fullscreen_tex(vtex_y, vtex_uv, true, 1.0f);
         return;
     }
 
@@ -425,7 +450,7 @@ void wallpaper_render(float elapsed_sec) {
     }
 
     /* Draw current wallpaper */
-    draw_fullscreen_tex(g_tex_current, 1.0f);
+    draw_fullscreen_tex(g_tex_current, 0, false, 1.0f);
 
     /* Draw outgoing (previous) wallpaper on top with decreasing alpha */
     if (g_in_transition && g_tex_prev) {
@@ -434,7 +459,7 @@ void wallpaper_render(float elapsed_sec) {
         switch (g_anim_type) {
             case 2:  /* Crossfade */
             default:
-                draw_fullscreen_tex(g_tex_prev, prev_alpha);
+                draw_fullscreen_tex(g_tex_prev, 0, false, prev_alpha);
                 break;
 
             /* For more complex transitions (wipe, zoom, etc.) we'd need
@@ -449,7 +474,7 @@ void wallpaper_render(float elapsed_sec) {
             case 7:  /* Grid/Mosaic   → crossfade fallback */
             case 8:  /* Diagonal Wipe → crossfade fallback */
             case 9:  /* Spin & Fade   → crossfade fallback */
-                draw_fullscreen_tex(g_tex_prev, prev_alpha);
+                draw_fullscreen_tex(g_tex_prev, 0, false, prev_alpha);
                 break;
         }
     }

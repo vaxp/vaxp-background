@@ -319,7 +319,7 @@ DisplayBackend* backend_wayland_create(void) {
     wb->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
         wb->layer_shell,
         wb->surface,
-        wb->wl_output,           /* NULL = let compositor pick output */
+        wb->wl_output,
         ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
         "vaxp-background");
 

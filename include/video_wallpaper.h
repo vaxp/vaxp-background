@@ -38,19 +38,12 @@ void video_wallpaper_set_volume(int volume);
 /* Returns true if path has a recognised video extension. */
 bool is_video_file(const char* path);
 
-/*
- * video_wallpaper_update_texture:
- *   Poll the appsink for new frames.
- *   GL Memory path: returns a GStreamer-owned texture — do NOT delete it.
- *   PBO path:       returns our own texture — managed internally.
- *   Returns true if tex_out contains a NEW frame.
- *   Returns false if no new frame; tex_out/w_out/h_out are unchanged
- *   (caller should keep using its previous texture).
- */
-bool video_wallpaper_update_texture(GLuint* tex_out, int* w_out, int* h_out);
+/* Gets the currently playing texture(s) without advancing the frame */
+bool video_wallpaper_get_texture(GLuint* tex_y_out, GLuint* tex_uv_out, int* w, int* h);
 
-/* Get the last known texture without polling GStreamer.
- * Returns false if no texture is available yet. */
-bool video_wallpaper_get_texture(GLuint* tex_out, int* w_out, int* h_out);
+/* Pulls the next frame from the video stream if available.
+ * Sets tex_y_out and tex_uv_out.
+ * Returns true if a new frame was loaded, false otherwise. */
+bool video_wallpaper_update_texture(GLuint* tex_y_out, GLuint* tex_uv_out, int* w, int* h);
 
 #endif /* VIDEO_WALLPAPER_H */
