@@ -373,15 +373,15 @@ bool video_wallpaper_update_texture(GLuint* tex_y_out, GLuint* tex_uv_out, int* 
         g_tex_w = w; g_tex_h = h;
         pbo_ensure(w, h);
     } else {
-        if (g_pbo_available && g_pbo_y[0]) {
-            pbo_upload_nv12(w, h, map.data, map.data + (w * h));
-        } else {
-            glBindTexture(GL_TEXTURE_2D, g_tex_y);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED, GL_UNSIGNED_BYTE, map.data);
-            
-            glBindTexture(GL_TEXTURE_2D, g_tex_uv);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w / 2, h / 2, GL_RG, GL_UNSIGNED_BYTE, map.data + (w * h));
-        }
+        /* Let the OpenGL driver handle the upload directly.
+         * Our manual memcpy into a PBO uses standard libc memcpy, which is
+         * excruciatingly slow when reading from mapped VASurfaces (Uncached/WC memory).
+         * The Mesa driver has specialized AVX/SSE paths for glTexSubImage2D. */
+        glBindTexture(GL_TEXTURE_2D, g_tex_y);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED, GL_UNSIGNED_BYTE, map.data);
+        
+        glBindTexture(GL_TEXTURE_2D, g_tex_uv);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w / 2, h / 2, GL_RG, GL_UNSIGNED_BYTE, map.data + (w * h));
     }
 
     gst_buffer_unmap(buf, &map);
