@@ -116,7 +116,7 @@ static int get_saved_audio_effect(void) {
     }
     g_key_file_free(kf);
     g_free(main_config);
-    if (id < 0 || id > 4) id = 0;
+    if (id < 0 || id > 7) id = 0;
     return id;
 }
 
@@ -430,6 +430,9 @@ int main(int argc, char *argv[]) {
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "3. Cinematic Heartbeat");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "4. Bass Pixelate");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "5. Audio Zoom");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "6. Chromatic Aberration");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "7. Fisheye Barrel");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "8. Radial Ring");
     gtk_combo_box_set_active(GTK_COMBO_BOX(audio_combo), get_saved_audio_effect());
     g_signal_connect(audio_combo, "changed", G_CALLBACK(on_audio_effect_changed), NULL);
 
