@@ -425,6 +425,7 @@ int main(int argc, char *argv[]) {
 
     /* Audio Effect Combobox */
     GtkWidget *audio_combo = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "0. None");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "1. Liquid Ripple");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "2. Cyber Glitch");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "3. Cinematic Heartbeat");
@@ -433,6 +434,7 @@ int main(int argc, char *argv[]) {
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "6. Chromatic Aberration");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "7. Fisheye Barrel");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "8. Radial Ring");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "9. Bass Shockwaves");
     gtk_combo_box_set_active(GTK_COMBO_BOX(audio_combo), get_saved_audio_effect());
     g_signal_connect(audio_combo, "changed", G_CALLBACK(on_audio_effect_changed), NULL);
 
