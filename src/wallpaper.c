@@ -61,6 +61,7 @@ static int    g_tex_prev_h    = 0;
 
 static char*  g_current_path  = NULL;
 static int    g_anim_type     = 0;        /* 0..9 transition style */
+static int    g_audio_effect  = 0;        /* 0..4 audio effect style */
 
 /* Transition timing */
 static double g_transition_start = 0.0;  /* wall-clock seconds */
@@ -119,13 +120,28 @@ static const char* FS_FULLSCREEN =
     "uniform float     uAspect;\n"
     "uniform float     uAudioLevel;\n"
     "uniform float     uTime;\n"
+    "uniform int       uAudioEffect;\n"
     "void main() {\n"
     "    vec2 uv = vUV;\n"
     "    float alpha_mult = 1.0;\n"
     "\n"
     "    if (uAudioLevel > 0.02) {\n"
-    "        float wave = sin(uv.y * 30.0 + uTime * 5.0) * cos(uv.x * 20.0 - uTime * 3.0);\n"
-    "        uv += wave * uAudioLevel * 0.03;\n"
+    "        if (uAudioEffect == 0) {\n"
+    "            // 1. Liquid Ripple\n"
+    "            float wave = sin(uv.y * 30.0 + uTime * 5.0) * cos(uv.x * 20.0 - uTime * 3.0);\n"
+    "            uv += wave * uAudioLevel * 0.03;\n"
+    "        } else if (uAudioEffect == 1) {\n"
+    "            // 2. Cyber Glitch (Horizontal tear)\n"
+    "            float tear = step(0.9, sin(uv.y * 60.0 + uTime * 20.0));\n"
+    "            uv.x += tear * uAudioLevel * 0.08 * sin(uTime * 50.0);\n"
+    "        } else if (uAudioEffect == 3) {\n"
+    "            // 4. Bass Pixelate\n"
+    "            float cells = mix(1000.0, 20.0, uAudioLevel);\n"
+    "            uv = floor(uv * cells) / cells;\n"
+    "        } else if (uAudioEffect == 4) {\n"
+    "            // 5. Audio Zoom\n"
+    "            uv = (uv - 0.5) * (1.0 - uAudioLevel * 0.2) + 0.5;\n"
+    "        }\n"
     "    }\n"
     "\n"
     "    if (uProgress > 0.0 && uProgress < 1.0) {\n"
@@ -200,9 +216,22 @@ static const char* FS_FULLSCREEN =
     "    }\n"
     "\n"
     "    if (uAudioLevel > 0.02) {\n"
-    "        float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));\n"
-    "        vec3 sat = mix(vec3(lum), c.rgb, 1.0 + uAudioLevel * 1.5);\n"
-    "        c.rgb = sat * (1.0 + uAudioLevel * 0.5);\n"
+    "        if (uAudioEffect == 0) {\n"
+    "            // Liquid Ripple: Saturation Pulse\n"
+    "            float lum = dot(c.rgb, vec3(0.299, 0.587, 0.114));\n"
+    "            vec3 sat = mix(vec3(lum), c.rgb, 1.0 + uAudioLevel * 1.5);\n"
+    "            c.rgb = sat * (1.0 + uAudioLevel * 0.5);\n"
+    "        } else if (uAudioEffect == 1) {\n"
+    "            // Cyber Glitch: Color swap\n"
+    "            if (sin(uTime * 30.0) > 0.0) c.rgb = mix(c.rgb, c.brg, uAudioLevel);\n"
+    "        } else if (uAudioEffect == 2) {\n"
+    "            // Cinematic Heartbeat: Vignette + Brightness\n"
+    "            vec2 p = vUV - 0.5;\n"
+    "            p.x *= uAspect;\n"
+    "            float dist = length(p);\n"
+    "            float vig = smoothstep(0.8, 0.2, dist * (1.0 + uAudioLevel * 0.8));\n"
+    "            c.rgb *= vig * (1.0 + uAudioLevel);\n"
+    "        }\n"
     "    }\n"
     "\n"
     "    FragColor = vec4(c.rgb, c.a * uAlpha * alpha_mult);\n"
@@ -287,7 +316,7 @@ static void init_fullscreen_shader(void) {
 
 /* ── Draw a texture as a full-screen quad with alpha ────────────────────── */
 
-static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float alpha, float progress, int anim_type, int is_outgoing, float audio_lvl, float time_sec) {
+static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float alpha, float progress, int anim_type, int is_outgoing, float audio_lvl, float time_sec, int audio_effect) {
     if (!g_prog_quad || !tex_y) return;
     p_glUseProgram(g_prog_quad);
     
@@ -309,6 +338,7 @@ static void draw_fullscreen_tex(GLuint tex_y, GLuint tex_uv, bool is_nv12, float
     p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uAspect"), (float)screen_w / (float)(screen_h > 0 ? screen_h : 1));
     p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uAudioLevel"), audio_lvl);
     p_glUniform1f(p_glGetUniformLocation(g_prog_quad, "uTime"), time_sec);
+    p_glUniform1i(p_glGetUniformLocation(g_prog_quad, "uAudioEffect"), audio_effect);
     
     p_glBindVertexArray(g_vao_quad);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -499,6 +529,7 @@ bool wallpaper_monitor_fd_ready(void) {
 }
 
 void load_saved_wallpaper(void) {
+    g_audio_effect = config_get_int("Desktop", "AudioEffect", 0);
     char* path = config_get_string("Desktop", "Wallpaper", NULL);
     if (!path) return;
 
@@ -550,7 +581,7 @@ void wallpaper_render(float elapsed_sec) {
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        draw_fullscreen_tex(vtex_y, vtex_uv, true, 1.0f, 0.0f, 0, 0, alvl, tsec);
+        draw_fullscreen_tex(vtex_y, vtex_uv, true, 1.0f, 0.0f, 0, 0, alvl, tsec, g_audio_effect);
         return;
     }
 
@@ -571,12 +602,12 @@ void wallpaper_render(float elapsed_sec) {
     }
 
     /* Draw current wallpaper (incoming) */
-    draw_fullscreen_tex(g_tex_current, 0, false, 1.0f, (g_in_transition && g_tex_prev) ? progress : 0.0f, g_anim_type, 0, alvl, tsec);
+    draw_fullscreen_tex(g_tex_current, 0, false, 1.0f, (g_in_transition && g_tex_prev) ? progress : 0.0f, g_anim_type, 0, alvl, tsec, g_audio_effect);
 
     /* Draw outgoing (previous) wallpaper on top */
     if (g_in_transition && g_tex_prev) {
         /* Alpha is handled in shader via alpha_mult for specific animations (e.g. crossfade)
          * but we can pass base alpha = 1.0 since the shader controls fade directly. */
-        draw_fullscreen_tex(g_tex_prev, 0, false, 1.0f, progress, g_anim_type, 1, alvl, tsec);
+        draw_fullscreen_tex(g_tex_prev, 0, false, 1.0f, progress, g_anim_type, 1, alvl, tsec, g_audio_effect);
     }
 }

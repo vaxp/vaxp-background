@@ -91,6 +91,35 @@ static int get_saved_anim(void) {
     return id;
 }
 
+static void on_audio_effect_changed(GtkComboBox *combo, gpointer user_data) {
+    (void)user_data;
+    int id = gtk_combo_box_get_active(combo);
+    ensure_config_dir();
+    char *main_config = get_vaxp_main_config_path();
+    GKeyFile *kf = g_key_file_new();
+    g_key_file_load_from_file(kf, main_config, G_KEY_FILE_NONE, NULL);
+    g_key_file_set_integer(kf, "Desktop", "AudioEffect", id);
+    g_key_file_save_to_file(kf, main_config, NULL);
+    g_key_file_free(kf);
+    g_free(main_config);
+}
+
+static int get_saved_audio_effect(void) {
+    int id = 0;
+    char *main_config = get_vaxp_main_config_path();
+    GKeyFile *kf = g_key_file_new();
+    if (g_key_file_load_from_file(kf, main_config, G_KEY_FILE_NONE, NULL)) {
+        GError *err = NULL;
+        int a = g_key_file_get_integer(kf, "Desktop", "AudioEffect", &err);
+        if (!err) id = a;
+        else g_error_free(err);
+    }
+    g_key_file_free(kf);
+    g_free(main_config);
+    if (id < 0 || id > 4) id = 0;
+    return id;
+}
+
 static int get_saved_volume(void) {
     int vol = 0;
     char *main_config = get_vaxp_main_config_path();
@@ -390,9 +419,23 @@ int main(int argc, char *argv[]) {
     gtk_combo_box_set_active(GTK_COMBO_BOX(anim_combo), get_saved_anim());
     g_signal_connect(anim_combo, "changed", G_CALLBACK(on_anim_changed), NULL);
 
-    GtkWidget *anim_lbl = gtk_label_new("Image Transition:");
+    GtkWidget *anim_lbl = gtk_label_new("Transition:");
     gtk_box_pack_start(GTK_BOX(toolbar), anim_lbl, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), anim_combo, FALSE, FALSE, 0);
+
+    /* Audio Effect Combobox */
+    GtkWidget *audio_combo = gtk_combo_box_text_new();
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "1. Liquid Ripple");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "2. Cyber Glitch");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "3. Cinematic Heartbeat");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "4. Bass Pixelate");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(audio_combo), "5. Audio Zoom");
+    gtk_combo_box_set_active(GTK_COMBO_BOX(audio_combo), get_saved_audio_effect());
+    g_signal_connect(audio_combo, "changed", G_CALLBACK(on_audio_effect_changed), NULL);
+
+    GtkWidget *audio_lbl = gtk_label_new("Audio FX:");
+    gtk_box_pack_start(GTK_BOX(toolbar), audio_lbl, FALSE, FALSE, 4);
+    gtk_box_pack_start(GTK_BOX(toolbar), audio_combo, FALSE, FALSE, 0);
 
     GtkWidget *browse_btn = gtk_button_new_with_label("📁 Add Folder");
     gtk_box_pack_end(GTK_BOX(toolbar), browse_btn, FALSE, FALSE, 0);
