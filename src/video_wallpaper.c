@@ -84,7 +84,6 @@ static bool g_pbo_available = false;
 
 /* ── Private state ─────────────────────────────────────────────────────────── */
 
-static bool          g_gl_zero_copy = false;
 
 /* GStreamer pipeline */
 static GstElement*  g_pipeline  = NULL;
@@ -132,35 +131,36 @@ static void pbo_release(void) {
     g_pbo_y[0] = g_pbo_y[1] = g_pbo_uv[0] = g_pbo_uv[1] = 0;
 }
 
-static void pbo_upload_nv12(int w, int h, const void* y, const void* uv) {
-    int write_idx = (g_pbo_idx + 1) % 2;
-    
-    gl_BindBuffer(GL_PIXEL_UNPACK_BUFFER, g_pbo_y[write_idx]);
-    void* dst_y = gl_MapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-    if (dst_y) { memcpy(dst_y, y, (size_t)(w * h)); gl_UnmapBuffer(GL_PIXEL_UNPACK_BUFFER); }
-    glBindTexture(GL_TEXTURE_2D, g_tex_y);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_RED, GL_UNSIGNED_BYTE, NULL);
-    
-    gl_BindBuffer(GL_PIXEL_UNPACK_BUFFER, g_pbo_uv[write_idx]);
-    void* dst_uv = gl_MapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-    if (dst_uv) { memcpy(dst_uv, uv, (size_t)(w * h / 2)); gl_UnmapBuffer(GL_PIXEL_UNPACK_BUFFER); }
-    glBindTexture(GL_TEXTURE_2D, g_tex_uv);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w / 2, h / 2, GL_RG, GL_UNSIGNED_BYTE, NULL);
-    
-    gl_BindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-    g_pbo_idx = write_idx;
-}
-
 /* ── Pipeline helpers ────────────────────────────────────────────────────── */
 
 static void pipeline_destroy(void) {
-    if (g_pipeline) {
-        gst_element_set_state(g_pipeline, GST_STATE_NULL);
-        gst_object_unref(g_pipeline);
-        g_pipeline = NULL;
-        g_appsink  = NULL;
+    if (!g_pipeline) goto cleanup_sample;
+
+    /* Flush appsink so GStreamer's streaming thread unblocks immediately */
+    if (g_appsink) {
+        gst_app_sink_set_drop(g_appsink, TRUE);
+        /* Drain any sample still queued */
+        GstSample* s;
+        while ((s = gst_app_sink_try_pull_sample(g_appsink, 0)) != NULL)
+            gst_sample_unref(s);
+        gst_object_unref(g_appsink);
+        g_appsink = NULL;
     }
-    /* Release GL Memory sample — GStreamer now owns the texture again */
+
+    /* Ask GStreamer to tear down the pipeline */
+    gst_element_set_state(g_pipeline, GST_STATE_NULL);
+
+    /* Block until NULL state is reached — only then are all VA-API/DMABuf
+     * surfaces actually released back to the driver.  Without this wait we
+     * were freeing the pipeline object while GStreamer still had live refs
+     * on the decoded buffers, so RAM and VRAM kept growing. */
+    gst_element_get_state(g_pipeline, NULL, NULL, GST_SECOND * 2);
+
+    gst_object_unref(g_pipeline);
+    g_pipeline = NULL;
+
+cleanup_sample:
+    /* Release any held GL Memory / appsink sample */
     if (g_gl_sample) { gst_sample_unref(g_gl_sample); g_gl_sample = NULL; }
 }
 
