@@ -181,7 +181,7 @@ static void inject_gl_context(GstElement* pipeline) {
 
 /* ── Public API ────────────────────────────────────────────────────────────── */
 
-void video_wallpaper_init(void* egl_display, void* egl_context, void* native_display) {
+void video_wallpaper_init(void* egl_display, void* egl_context) {
 
     /* ── Load PBO extension pointers (fallback path) ── */
     typedef void* (*ProcLoader)(const char*);
@@ -197,27 +197,24 @@ void video_wallpaper_init(void* egl_display, void* egl_context, void* native_dis
                            gl_MapBuffer && gl_UnmapBuffer && gl_DeleteBuffers);
     }
 
-    /* ── Attempt zero-copy GL Memory path ── */
+    g_gl_zero_copy = false;
+
+    if (!egl_display || !egl_context) {
+        printf("[VideoWallpaper] No EGL context provided; falling back to CPU upload (PBOs)\n");
+        return;
+    }
+
     EGLDisplay edpy = (EGLDisplay)egl_display;
     EGLContext ectx = (EGLContext)egl_context;
 
-    if (!edpy || !ectx) {
-        printf("[VideoWallpaper] No EGL context — using PBO fallback\n");
-        return;
-    }
-
-    if (native_display) {
-        g_gst_display = gst_gl_display_wayland_new_with_display(native_display);
-    } else {
-        g_gst_display = GST_GL_DISPLAY(
-            gst_gl_display_egl_new_with_egl_display(edpy));
-    }
+    /* 1. Wrap the EGL Display for GStreamer */
+    g_gst_display = GST_GL_DISPLAY(gst_gl_display_egl_new_with_egl_display(edpy));
     if (!g_gst_display) {
-        printf("[VideoWallpaper] GstGLDisplayEGL failed — using PBO fallback\n");
+        printf("[VideoWallpaper] Failed to create GstGLDisplayEGL\n");
         return;
     }
 
-    /* ── Create a NEW EGL context that SHARES objects with ours ────────────────
+    /* 2. Create a NEW shared EGL context natively
      * CRITICAL: We must NOT give GStreamer our main EGL context directly.
      * An EGL context can only be current on ONE thread at a time. Our main
      * rendering thread keeps our context current, so GStreamer's internal GL

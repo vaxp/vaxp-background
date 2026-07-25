@@ -12,16 +12,9 @@
 #include <stdbool.h>
 #include <GL/gl.h>
 
-/*
- * Initialise the video wallpaper subsystem.
- *
- * Pass the EGL display and context from the display backend to enable
- * GStreamer GL context sharing (zero-copy path). On X11/GLX backends
- * both pointers will be NULL — the system falls back to PBO upload.
- *
- * Call AFTER gst_init() and AFTER the GL context is current.
- */
-void video_wallpaper_init(void* egl_display, void* egl_context, void* native_display);
+/* Initialize the video wallpaper subsystem.
+ * Must be called from the thread holding the main OpenGL/EGL context. */
+void video_wallpaper_init(void* egl_display, void* egl_context);
 
 /* Load and loop a video file as wallpaper. */
 void video_wallpaper_load(const char* path);

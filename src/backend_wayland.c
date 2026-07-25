@@ -386,7 +386,6 @@ DisplayBackend* backend_wayland_create(void) {
     wb->base.egl_display = (void*)wb->egl_dpy;
     wb->base.egl_context = (void*)wb->egl_ctx;
     wb->base.egl_config  = (void*)wb->egl_cfg;
-    wb->base.native_display = (void*)wb->wl_display;
     wb->base.dispatch    = wayland_dispatch;
     wb->base.flush       = (void (*)(DisplayBackend*))wayland_egl_swap;
     wb->base.destroy     = wayland_destroy;
