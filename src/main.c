@@ -85,9 +85,6 @@ int main(int argc, char* argv[]) {
     /* Load initial wallpaper from config */
     load_saved_wallpaper();
 
-    /* Start audio analysis thread for reactive effects */
-    audio_analyzer_start();
-
     /* ── Main loop ────────────────────────────────────────────────────────── */
 
     int inotify_fd = wallpaper_monitor_fd();

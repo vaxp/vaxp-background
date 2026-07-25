@@ -619,6 +619,13 @@ bool wallpaper_monitor_fd_ready(void) {
 
 void load_saved_wallpaper(void) {
     g_audio_effect = config_get_int("Desktop", "AudioEffect", 0);
+    
+    if (g_audio_effect > 0) {
+        audio_analyzer_start();
+    } else {
+        audio_analyzer_stop();
+    }
+
     char* path = config_get_string("Desktop", "Wallpaper", NULL);
     if (!path) return;
 
