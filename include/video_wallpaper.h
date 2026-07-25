@@ -21,7 +21,7 @@
  *
  * Call AFTER gst_init() and AFTER the GL context is current.
  */
-void video_wallpaper_init(void* egl_display, void* egl_context);
+void video_wallpaper_init(void* egl_display, void* egl_context, void* native_display);
 
 /* Load and loop a video file as wallpaper. */
 void video_wallpaper_load(const char* path);
@@ -39,11 +39,11 @@ void video_wallpaper_set_volume(int volume);
 bool is_video_file(const char* path);
 
 /* Gets the currently playing texture(s) without advancing the frame */
-bool video_wallpaper_get_texture(GLuint* tex_y_out, GLuint* tex_uv_out, int* w, int* h);
+bool video_wallpaper_get_texture(GLuint* tex_out, int* w, int* h);
 
 /* Pulls the next frame from the video stream if available.
- * Sets tex_y_out and tex_uv_out.
+ * Sets tex_out.
  * Returns true if a new frame was loaded, false otherwise. */
-bool video_wallpaper_update_texture(GLuint* tex_y_out, GLuint* tex_uv_out, int* w, int* h);
+bool video_wallpaper_update_texture(GLuint* tex_out, int* w, int* h);
 
 #endif /* VIDEO_WALLPAPER_H */

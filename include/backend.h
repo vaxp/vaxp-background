@@ -26,6 +26,7 @@ typedef struct DisplayBackend {
     void* egl_display;   /* EGLDisplay */
     void* egl_context;   /* EGLContext */
     void* egl_config;    /* EGLConfig  — needed to create shared contexts */
+    void* native_display; /* wl_display or Display */
 
     /* Process all pending display events (non-blocking). */
     void (*dispatch)(struct DisplayBackend* self);

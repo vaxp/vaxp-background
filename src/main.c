@@ -77,7 +77,7 @@ int main(int argc, char* argv[]) {
     layer_manager_init();
     wallpaper_init();
     wallpaper_resize(backend->screen_w, backend->screen_h);
-    video_wallpaper_init(backend->egl_display, backend->egl_context);
+    video_wallpaper_init(backend->egl_display, backend->egl_context, backend->native_display);
 
     /* Monitor config file for live wallpaper changes (inotify) */
     init_wallpaper_monitor();

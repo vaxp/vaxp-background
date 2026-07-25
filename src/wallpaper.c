@@ -23,6 +23,7 @@
 
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
+#include <gst/video/video.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -453,6 +454,25 @@ static GLuint load_image_texture(const char* path, int* out_w, int* out_h) {
         return 0;
     }
 
+    GstVideoInfo vinfo;
+    gst_video_info_from_caps(&vinfo, caps);
+    int stride = vinfo.stride[0];
+    int offset = vinfo.offset[0];
+
+    GstVideoMeta *meta = gst_buffer_get_video_meta(buf);
+    if (meta) {
+        stride = meta->stride[0];
+        offset = meta->offset[0];
+    }
+
+    int skip_x = 0;
+    int skip_y = 0;
+    GstVideoCropMeta *crop = gst_buffer_get_video_crop_meta(buf);
+    if (crop) {
+        skip_x = crop->x;
+        skip_y = crop->y;
+    }
+
     GLuint tex = 0;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -460,8 +480,18 @@ static GLuint load_image_texture(const char* path, int* out_w, int* out_h) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, stride / 4);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, skip_x);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, skip_y);
+
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0,
-                 GL_RGBA, GL_UNSIGNED_BYTE, map.data);
+                 GL_RGBA, GL_UNSIGNED_BYTE, map.data + offset);
+
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
 
     gst_buffer_unmap(buf, &map);
     gst_sample_unref(sample);
@@ -628,19 +658,19 @@ void wallpaper_render(float elapsed_sec) {
 
     if (layer == LAYER_VIDEO) {
         /* ── Video layer ── */
-        GLuint vtex_y = 0, vtex_uv = 0; int vw = 0, vh = 0;
-        bool new_frame = video_wallpaper_update_texture(&vtex_y, &vtex_uv, &vw, &vh);
+        GLuint vtex = 0; int vw = 0, vh = 0;
+        bool new_frame = video_wallpaper_update_texture(&vtex, &vw, &vh);
 
         /* If no new frame but we have a cached texture, still present it */
         if (!new_frame && g_tex_prev == 0) {
             /* Use the video module's last known texture without pulling */
-            video_wallpaper_get_texture(&vtex_y, &vtex_uv, &vw, &vh);
+            video_wallpaper_get_texture(&vtex, &vw, &vh);
         }
-        if (!vtex_y) return;  /* nothing to draw yet */
+        if (!vtex) return;  /* nothing to draw yet */
 
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
-        draw_fullscreen_tex(vtex_y, vtex_uv, true, 1.0f, 0.0f, 0, 0, alvl, tsec, g_audio_effect);
+        draw_fullscreen_tex(vtex, 0, false, 1.0f, 0.0f, 0, 0, alvl, tsec, g_audio_effect);
         return;
     }
 

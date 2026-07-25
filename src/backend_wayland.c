@@ -182,7 +182,6 @@ static bool create_egl_context(WaylandBackend* wb) {
         EGL_CONTEXT_MAJOR_VERSION,             3,
         EGL_CONTEXT_MINOR_VERSION,             3,
         EGL_CONTEXT_OPENGL_PROFILE_MASK,       EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
-        EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE, EGL_TRUE,
         EGL_NONE
     };
     wb->egl_ctx = eglCreateContext(wb->egl_dpy, cfg, EGL_NO_CONTEXT, ctx_attribs);
@@ -387,6 +386,7 @@ DisplayBackend* backend_wayland_create(void) {
     wb->base.egl_display = (void*)wb->egl_dpy;
     wb->base.egl_context = (void*)wb->egl_ctx;
     wb->base.egl_config  = (void*)wb->egl_cfg;
+    wb->base.native_display = (void*)wb->wl_display;
     wb->base.dispatch    = wayland_dispatch;
     wb->base.flush       = (void (*)(DisplayBackend*))wayland_egl_swap;
     wb->base.destroy     = wayland_destroy;

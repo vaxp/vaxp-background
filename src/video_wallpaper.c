@@ -50,8 +50,11 @@
 /* EGL */
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
-
+#include <GL/gl.h>
 #include <stdio.h>
+
+/* GStreamer Wayland API (dynamically linked but we only need the prototype) */
+extern GstGLDisplay * gst_gl_display_wayland_new_with_display (gpointer display);
 #include <stdlib.h>
 #include <string.h>
 
@@ -165,8 +168,7 @@ static void inject_gl_context(GstElement* pipeline) {
     if (!g_gst_display || !g_gst_context) return;
 
     GstContext* disp_ctx = gst_context_new(GST_GL_DISPLAY_CONTEXT_TYPE, TRUE);
-    gst_structure_set(gst_context_writable_structure(disp_ctx),
-        "display", GST_TYPE_GL_DISPLAY, g_gst_display, NULL);
+    gst_context_set_gl_display(disp_ctx, g_gst_display);
     gst_element_set_context(pipeline, disp_ctx);
     gst_context_unref(disp_ctx);
 
@@ -179,7 +181,7 @@ static void inject_gl_context(GstElement* pipeline) {
 
 /* ── Public API ────────────────────────────────────────────────────────────── */
 
-void video_wallpaper_init(void* egl_display, void* egl_context) {
+void video_wallpaper_init(void* egl_display, void* egl_context, void* native_display) {
 
     /* ── Load PBO extension pointers (fallback path) ── */
     typedef void* (*ProcLoader)(const char*);
@@ -196,17 +198,20 @@ void video_wallpaper_init(void* egl_display, void* egl_context) {
     }
 
     /* ── Attempt zero-copy GL Memory path ── */
-    if (!egl_display || !egl_context) {
+    EGLDisplay edpy = (EGLDisplay)egl_display;
+    EGLContext ectx = (EGLContext)egl_context;
+
+    if (!edpy || !ectx) {
         printf("[VideoWallpaper] No EGL context — using PBO fallback\n");
         return;
     }
 
-    EGLDisplay edpy = (EGLDisplay)egl_display;
-    EGLContext ectx = (EGLContext)egl_context;
-
-    /* ── Create GStreamer GL display wrapping our EGL display ── */
-    g_gst_display = GST_GL_DISPLAY(
-        gst_gl_display_egl_new_with_egl_display(edpy));
+    if (native_display) {
+        g_gst_display = gst_gl_display_wayland_new_with_display(native_display);
+    } else {
+        g_gst_display = GST_GL_DISPLAY(
+            gst_gl_display_egl_new_with_egl_display(edpy));
+    }
     if (!g_gst_display) {
         printf("[VideoWallpaper] GstGLDisplayEGL failed — using PBO fallback\n");
         return;
@@ -271,6 +276,8 @@ void video_wallpaper_init(void* egl_display, void* egl_context) {
         return;
     }
 
+
+
     /* Wrap the NEW shared context (not our main context) */
     g_gst_context = gst_gl_context_new_wrapped(
         g_gst_display,
@@ -333,10 +340,9 @@ void video_wallpaper_load(const char* path) {
         char desc_gl[4096];
         snprintf(desc_gl, sizeof(desc_gl),
             "filesrc location=\"%s\" "
-            "! parsebin "
-            "! vaapidecodebin "
-            "! glupload "
-            "! glcolorconvert "
+            "! parsebin ! vaapidecodebin "
+            "! video/x-raw,format=NV12 "
+            "! glupload ! glcolorconvert "
             "! video/x-raw(memory:GLMemory),format=RGBA "
             "! appsink name=sink max-buffers=1 drop=true sync=true emit-signals=false",
             path);
@@ -471,10 +477,8 @@ bool video_wallpaper_update_texture(GLuint* tex_out, int* w_out, int* h_out) {
     if (g_gl_zero_copy && mem && gst_is_gl_memory(mem)) {
         GstGLMemory* gl_mem = (GstGLMemory*)mem;
 
-        /* Wait for GStreamer's GL commands to land before sampling in our ctx */
-        GstGLSyncMeta* sync = gst_buffer_get_gl_sync_meta(buf);
-        if (sync) gst_gl_sync_meta_wait_cpu(sync, g_gst_context);
-
+        /* Note: we rely on implicit EGL synchronization (or glFlush inside GStreamer)
+         * to avoid tearing, because gst_gl_sync_meta_wait_cpu triggers thread assertions. */
         GLuint tex = gst_gl_memory_get_texture_id(gl_mem);
 
         /* Keep sample alive — releasing it lets GStreamer recycle the texture */
